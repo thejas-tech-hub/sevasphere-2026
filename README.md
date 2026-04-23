@@ -30,15 +30,25 @@ SevaSphere uses **Gemini AI + real UN disaster data (GDACS)** to detect emerging
 ## 🏗️ Architecture
 
 Frontend (React + TailwindCSS)
+
 ↓
+
 Firebase Auth + Firestore (Google Cloud)
+
 ↓
+
 Gemini AI API (Crisis Analysis + Matching + Reports)
+
 ↓
+
 GDACS Real Disaster Data Feed (UN System)
+
 ↓
+
 Google Maps JavaScript API
+
 ↓
+
 Firebase Hosting (Cloud Deployment)
 
 ## 🛠️ Tech Stack
