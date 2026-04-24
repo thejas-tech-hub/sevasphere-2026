@@ -95,7 +95,7 @@ npm start
 
 ## 👥 Team
 
-**Team Name:** SevaSphere
+**Team Name:** AlgoRythms 
 **Track:** Smart Resource Allocation — Data-Driven Volunteer Coordination
 **Competition:** Solution Challenge 2026 India
 
