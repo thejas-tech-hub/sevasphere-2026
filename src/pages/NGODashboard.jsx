@@ -3,7 +3,7 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, orderBy, query } from 'firebase/firestore';
-import { detectCrises, enhanceNeedWithAI, generateSituationReport, extractFromHandwrittenReport } from '../utils/gemini';
+import { detectCrises, enhanceNeedWithAI, generateSituationReport, extractFromHandwrittenReport, generatePredictions } from '../utils/gemini';
 import { AlertTriangle, Plus, Zap, Users, MapPin, Brain, Loader, CheckCircle, FileText, X, Upload } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -40,6 +40,8 @@ export default function NGODashboard() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrSuccess, setOcrSuccess] = useState(false);
+  const [predictions, setPredictions] = useState([]);
+  const [loadingPredictions, setLoadingPredictions] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', location: userProfile?.location || '',
     skills: [], urgency: 'medium', volunteersNeeded: 10
@@ -58,6 +60,16 @@ export default function NGODashboard() {
       const snap = await getDocs(query(collection(db, 'needs'), orderBy('createdAt', 'desc')));
       setNeeds(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); }
+  }
+
+  async function loadPredictions() {
+    if (predictions.length > 0) return;
+    setLoadingPredictions(true);
+    try {
+      const result = await generatePredictions(crises);
+      setPredictions(result || []);
+    } catch (e) { console.error(e); }
+    setLoadingPredictions(false);
   }
 
   async function handleEnhance() {
@@ -170,12 +182,13 @@ export default function NGODashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           {[
             { icon: <AlertTriangle className="w-5 h-5 text-red-500" />, value: crises.filter(c => c.urgency === 'critical').length, label: 'Critical Alerts', bg: 'bg-red-50' },
             { icon: <CheckCircle className="w-5 h-5 text-green-500" />, value: needs.length, label: 'Active Needs', bg: 'bg-green-50' },
             { icon: <Users className="w-5 h-5 text-blue-500" />, value: needs.reduce((a, n) => a + (n.volunteersApplied || 0), 0), label: 'Volunteers Applied', bg: 'bg-blue-50' },
             { icon: <Zap className="w-5 h-5 text-orange-500" />, value: crises.length, label: 'AI Alerts Today', bg: 'bg-orange-50' },
+            { icon: <Brain className="w-5 h-5 text-amber-500" />, value: '🔮 3', label: 'Predictions', bg: 'bg-amber-50' },
           ].map((s, i) => (
             <div key={i} className={`${s.bg} rounded-xl p-4 flex items-center gap-3`}>
               {s.icon}
@@ -189,8 +202,8 @@ export default function NGODashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-200 rounded-xl p-1 w-fit">
-          {[{ id: 'crises', label: '🚨 AI Crisis Alerts' }, { id: 'needs', label: '📋 Your Needs' }].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+          {[{ id: 'crises', label: '🚨 AI Crisis Alerts' }, { id: 'needs', label: '📋 Your Needs' }, { id: 'predictions', label: '🔮 Predictions' }].map(t => (
+            <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'predictions') loadPredictions(); }}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${tab === t.id ? 'bg-white shadow text-blue-900' : 'text-gray-600'}`}>
               {t.label}
             </button>
@@ -281,6 +294,60 @@ export default function NGODashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Predictions Tab */}
+        {tab === 'predictions' && (
+          <div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+              <span className="text-lg">⚠️</span>
+              <p className="text-sm text-amber-800 font-medium">These are AI predictions, not confirmed events. Use for preparedness planning only.</p>
+            </div>
+            {loadingPredictions ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader className="w-8 h-8 animate-spin text-amber-500" />
+                <span className="ml-3 text-gray-500">Gemini AI generating predictive intelligence...</span>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {predictions.map(p => (
+                  <div key={p.id} className="bg-white rounded-xl shadow-sm border border-amber-100 p-5 hover:shadow-md transition">
+                    <div className="flex items-start justify-between mb-3">
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full text-white ${
+                        p.type === 'flood' ? 'bg-blue-500' : p.type === 'heatwave' ? 'bg-orange-500' : p.type === 'cyclone' ? 'bg-purple-500' : p.type === 'health' ? 'bg-green-500' : 'bg-yellow-500'
+                      }`}>
+                        {p.type?.toUpperCase()}
+                      </span>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-full border ${
+                        p.timeframe === '24 hours' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200'
+                      }`}>
+                        ⏱ {p.timeframe}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-gray-900 mb-1">{p.title}</h3>
+                    <div className="flex items-center gap-1 text-gray-400 text-xs mb-3">
+                      <MapPin className="w-3 h-3" />{p.location}
+                    </div>
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Probability</span>
+                        <span className="font-bold text-amber-700">{p.probability}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className={`h-2 rounded-full ${p.probability >= 80 ? 'bg-red-400' : p.probability >= 70 ? 'bg-amber-400' : 'bg-yellow-400'}`}
+                          style={{ width: `${p.probability}%` }} />
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3 italic">"{p.basis}"</p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      <p className="text-xs font-semibold text-amber-800 mb-0.5">📋 Recommended Action</p>
+                      <p className="text-sm text-amber-700">{p.recommendedAction}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -256,15 +256,87 @@ Return a JSON object:
   return fallback;
 }
 
+export function getSkillMatchScore(volunteer, need) {
+  const needSkills = need.skills || [];
+  if (needSkills.length === 0) return 0;
+  const volSkills = volunteer.skills || [];
+  const matchCount = needSkills.filter(s => volSkills.includes(s)).length;
+  return Math.round((matchCount / needSkills.length) * 100);
+}
+
 export async function matchVolunteers(need, volunteers) {
   if (!volunteers.length) return [];
+
+  // Pre-filter: keep only volunteers with at least 1 skill match
+  const needSkills = need.skills || [];
+  let filtered = volunteers.map((v, originalIndex) => {
+    const volSkills = v.skills || [];
+    const matchCount = needSkills.filter(s => volSkills.includes(s)).length;
+    return { ...v, _originalIndex: originalIndex, _matchCount: matchCount };
+  }).filter(v => v._matchCount > 0);
+
+  // Sort by match count descending, keep top 20
+  filtered.sort((a, b) => b._matchCount - a._matchCount);
+  filtered = filtered.slice(0, 20);
+
+  if (filtered.length === 0) return [];
+
   const prompt = `You are SevaSphere's volunteer matching AI.
-Need: "${need.title}" in ${need.location}. Skills: ${need.skills?.join(', ')}. Urgency: ${need.urgency}
+Need: "${need.title}" in ${need.location}. Skills: ${needSkills.join(', ')}. Urgency: ${need.urgency}
 Volunteers:
-${volunteers.map((v, i) => `${i}: ${v.name} | Skills: ${v.skills?.join(', ')} | Location: ${v.location}`).join('\n')}
+${filtered.map((v, i) => `${i}: ${v.name} | Skills: ${v.skills?.join(', ')} | Location: ${v.location}`).join('\n')}
 Return a JSON array of top 5 matches:
 [{"index": 0, "score": 95, "reason": "reason"}]`;
-  return await callGeminiJSON(prompt) || [];
+  const results = await callGeminiJSON(prompt) || [];
+  // Map filtered indices back to original indices
+  return results.map(r => ({ ...r, index: filtered[r.index]?._originalIndex ?? r.index }));
+}
+
+// ─── REVERSE MATCH — rank needs for a single volunteer ────────────────────────
+export async function rankNeedsForVolunteer(volunteer, needs) {
+  if (!needs.length) return [];
+  const volSkills = volunteer?.skills || [];
+  if (volSkills.length === 0) return [];
+
+  const cacheKey = `rank-${volunteer?.uid || 'v'}-${needs.length}`;
+  const cached = getCached(cacheKey);
+  if (cached) { console.log('[Hybrid Match] 📦 Using cached Gemini rankings'); return cached; }
+
+  // Pre-filter: keep needs with ≥1 skill overlap, track original index
+  let scored = needs.map((n, originalIndex) => {
+    const needSkills = n.skills || [];
+    const matchCount = needSkills.filter(s => volSkills.includes(s)).length;
+    return { ...n, _originalIndex: originalIndex, _matchCount: matchCount };
+  }).filter(n => n._matchCount > 0);
+
+  scored.sort((a, b) => b._matchCount - a._matchCount);
+  scored = scored.slice(0, 20);
+
+  if (scored.length === 0) return [];
+
+  console.log('[Hybrid Match] Pre-filtered', scored.length, 'needs with skill overlap, calling Gemini…');
+
+  const prompt = `You are SevaSphere's volunteer matching AI.
+Volunteer: "${volunteer.name}" | Skills: ${volSkills.join(', ')} | Location: ${volunteer.location}
+Available needs:
+${scored.map((n, i) => `${i}: "${n.title}" in ${n.location} | Required: ${n.skills?.join(', ')} | Urgency: ${n.urgency}`).join('\n')}
+Rank ALL these needs by best fit for this volunteer. Consider skill overlap, location proximity, and urgency.
+Return a JSON array:
+[{"index": 0, "score": 95, "reason": "brief reason"}]`;
+
+  const results = await callGeminiJSON(prompt) || [];
+  console.log('[Hybrid Match] Gemini returned', results.length, 'rankings');
+
+  const mapped = results
+    .filter(r => r.index >= 0 && r.index < scored.length)
+    .map(r => ({
+      originalIndex: scored[r.index]._originalIndex,
+      score: Math.min(100, Math.max(0, r.score || 0)),
+      reason: r.reason || ''
+    }));
+
+  if (mapped.length > 0) setCache(cacheKey, mapped);
+  return mapped;
 }
 
 export async function generateSituationReport(crises, stats) {
@@ -359,6 +431,51 @@ ${crisisDetails}
 
   setCache(cacheKey, fallbackReport);
   return fallbackReport;
+}
+
+export async function generatePredictions(crises) {
+  const cacheKey = 'predictions';
+  const cached = getCached(cacheKey);
+  if (cached) { console.log('📦 Using cached predictions'); return cached; }
+
+  const crisisData = crises.map(c => `${c.title} | ${c.type} | ${c.location} | Risk: ${c.riskScore}/100 | ${c.urgency}`).join('\n');
+
+  const prompt = `You are SevaSphere's predictive intelligence engine for India.
+Based on these active crisis patterns:
+${crisisData}
+Generate 3 predictive alerts for the NEXT 24-48 hours.
+Each prediction should identify areas likely to need volunteer support based on: seasonal patterns, geographic proximity to active crises, and historical disaster progression patterns.
+Return JSON array:
+[{
+  "id": "p1",
+  "title": "Prediction title",
+  "location": "City, State",
+  "state": "State",
+  "lat": 0,
+  "lng": 0,
+  "probability": 75,
+  "timeframe": "24 hours",
+  "basis": "one sentence explaining the prediction",
+  "type": "flood",
+  "recommendedAction": "specific action NGOs should take now"
+}]
+Return ONLY the JSON array, no markdown.`;
+
+  const result = await callGeminiJSON(prompt);
+  if (result) {
+    const predictions = Array.isArray(result) ? result : [result];
+    setCache(cacheKey, predictions);
+    return predictions;
+  }
+
+  // Fallback when Gemini is unavailable
+  const fallback = [
+    { id: 'p1', title: 'Potential Flooding in Downstream Areas', location: 'Dibrugarh, Assam', state: 'Assam', lat: 27.4728, lng: 94.9120, probability: 82, timeframe: '24 hours', basis: 'Heavy upstream rainfall and rising Brahmaputra water levels suggest downstream flooding.', type: 'flood', recommendedAction: 'Pre-position rescue boats and relief supplies in low-lying areas of Dibrugarh district.' },
+    { id: 'p2', title: 'Heatwave Expansion Expected', location: 'Chandrapur, Maharashtra', state: 'Maharashtra', lat: 19.9615, lng: 79.2961, probability: 78, timeframe: '48 hours', basis: 'Current Nagpur heatwave pattern historically expands to neighboring Vidarbha districts.', type: 'heatwave', recommendedAction: 'Set up additional cooling centers and distribute water in Chandrapur and Gadchiroli.' },
+    { id: 'p3', title: 'Health Crisis Risk in Flood-Affected Zones', location: 'Kamrup, Assam', state: 'Assam', lat: 26.2006, lng: 91.7460, probability: 71, timeframe: '48 hours', basis: 'Post-flood waterlogging typically leads to waterborne disease outbreaks within 48 hours.', type: 'health', recommendedAction: 'Deploy medical volunteers and stock ORS, antibiotics, and water purification tablets.' }
+  ];
+  setCache(cacheKey, fallback);
+  return fallback;
 }
 
 export async function generateVolunteerImpact(applications, userProfile) {

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, query, where, orderBy, doc, updateDoc, increment } from 'firebase/firestore';
 import { MapPin, Users, CheckCircle, Heart, Loader, Zap, Star, Award, TrendingUp } from 'lucide-react';
-import { generateVolunteerImpact } from '../utils/gemini';
+import { generateVolunteerImpact, rankNeedsForVolunteer } from '../utils/gemini';
 
 const URGENCY = {
   critical:'bg-red-100 text-red-700 border-red-200',
@@ -31,6 +31,7 @@ export default function VolunteerDashboard() {
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [applying, setApplying] = useState(null);
   const [tab, setTab] = useState('opportunities');
+  const [geminiScores, setGeminiScores] = useState({});
 
   useEffect(() => { loadData(); }, []);
 
@@ -38,12 +39,19 @@ export default function VolunteerDashboard() {
     setLoading(true);
     try {
       const nSnap = await getDocs(query(collection(db,'needs'), orderBy('createdAt','desc')));
-      setNeeds(nSnap.docs.map(d => ({id:d.id,...d.data()})));
+      const loadedNeeds = nSnap.docs.map(d => ({id:d.id,...d.data()}));
+      setNeeds(loadedNeeds);
       const aSnap = await getDocs(query(collection(db,'applications'), where('volunteerId','==',currentUser.uid)));
       const apps = aSnap.docs.map(d => d.data());
       setApplications(apps);
-      setAppliedIds(apps.map(a => a.needId));
+      const applIds = apps.map(a => a.needId);
+      setAppliedIds(applIds);
       if (apps.length > 0) loadImpact(apps);
+      // Trigger hybrid AI matching in background
+      const available = loadedNeeds.filter(n => !applIds.includes(n.id));
+      if (available.length > 0 && userProfile?.skills?.length > 0) {
+        enhanceWithGemini(available);
+      }
     } catch(e) { console.error(e); }
     setLoading(false);
   }
@@ -53,6 +61,24 @@ export default function VolunteerDashboard() {
     const result = await generateVolunteerImpact(apps, userProfile);
     setImpact(result);
     setLoadingImpact(false);
+  }
+
+  async function enhanceWithGemini(available) {
+    try {
+      console.log('[Hybrid Match] 🚀 Requesting Gemini ranking for', available.length, 'needs');
+      const results = await rankNeedsForVolunteer(userProfile, available);
+      if (results && results.length > 0) {
+        const scoreMap = {};
+        results.forEach(r => {
+          const need = available[r.originalIndex];
+          if (need) scoreMap[need.id] = { score: r.score, reason: r.reason };
+        });
+        console.log('[Hybrid Match] ✅ Gemini scores applied for', Object.keys(scoreMap).length, 'needs');
+        setGeminiScores(scoreMap);
+      }
+    } catch (e) {
+      console.error('[Hybrid Match] ❌ Gemini enhancement failed, using local scores:', e);
+    }
   }
 
   function skillMatch(need) {
@@ -82,7 +108,7 @@ export default function VolunteerDashboard() {
 
   const ranked = needs
     .filter(n => !appliedIds.includes(n.id))
-    .map(n => ({...n, matchScore: skillMatch(n)}))
+    .map(n => ({...n, matchScore: geminiScores[n.id]?.score ?? skillMatch(n)}))
     .sort((a,b) => b.matchScore - a.matchScore);
 
   const badge = impact?.badge ? BADGE_CONFIG[impact.badge] : null;
