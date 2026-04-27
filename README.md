@@ -28,31 +28,21 @@ SevaSphere uses **Gemini AI + real UN disaster data (GDACS)** to detect emerging
 | 📊 **Impact Tracker** | AI-powered volunteer impact scoring with badges |
 | 🏢 **NGO Command Center** | Real-time dashboard with crisis alerts and volunteer management |
 
-## 🏗️ Architecture
-
-NGO Handwritten Reports + GDACS Live Feed
-                       ↓
-
-               Gemini AI Engine
-      (OCR · Matching · SITREP · Impact)
-
-                       ↓
-
-       Firebase Firestore (Real-time DB)
-
-                       ↓
-
-    ┌─────────────────────────────────────┐
-    │                                     │
-    │  NGO Dashboard │ Crisis │ Volunteer │
-    │                                     │
-    │  + Field Upload │ Map │ Dashboard   │
-    │                                     │
-    └─────────────────────────────────────┘
-
-                       ↓
-
-        Firebase Hosting (Google Cloud)
+flowchart TD
+    A[NGO Handwritten Reports + GDACS Live Feed] --> B[Gemini AI Engine<br>OCR · Matching · SITREP · Impact]
+    B --> C[(Firebase Firestore<br>Real-time DB)]
+    
+    C --> D
+    
+    subgraph Dashboard Components
+        direction row
+        D1[NGO Dashboard] --- D2[Crisis] --- D3[Volunteer]
+        D4[+ Field Upload] --- D5[Map] --- D6[Dashboard]
+    end
+    
+    D --> E[Firebase Hosting<br>Google Cloud]
+    
+    style Dashboard Components fill:#f9f9f9,stroke:#333,stroke-width:2px
 
 ## 🛠️ Tech Stack
 
