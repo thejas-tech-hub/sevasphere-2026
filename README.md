@@ -71,7 +71,7 @@ NGO Handwritten Reports + GDACS Live Feed
                     ↓
        Firebase Hosting (Google Cloud)
 ```
-3c847ca (Add hybrid matching + predictive crisis layer)
+(Add hybrid matching + predictive crisis layer)
 
 ## 🛠️ Tech Stack
 
