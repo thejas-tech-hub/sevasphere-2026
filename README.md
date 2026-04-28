@@ -33,26 +33,27 @@ Every year, 50+ million Indians are affected by natural disasters. NGOs lose **7
 ## 🏗️ Architecture
 
 GDACS Live Feed + NGO Handwritten Reports
-↓
+                   ↓
 
-Gemini AI Intelligence Engine
-┌───────────────────────────────────────┐
-│ Predict │ Digitize │ Match+Rank       │
-└───────────────────────────────────────┘
+     Gemini AI Intelligence Engine
+ ┌───────────────────────────────────┐
+ │ Predict │ Digitize │ Match+Rank   │
+ └───────────────────────────────────┘
 
-↓
+                   ↓
 
-Firebase Firestore (Real-time)
-↓
+     Firebase Firestore (Real-time)
+     
+                   ↓
 
-┌───────────────────────────────────────┐
-│ NGO Dashboard │ Crisis Map            │
-│ + Predictions │ Volunteer DB          │
-└───────────────────────────────────────┘
+ ┌───────────────────────────────────┐
+ │ NGO Dashboard │ Crisis Map        │
+ │ + Predictions │ Volunteer DB      │
+ └───────────────────────────────────┘
 
-↓
+                   ↓
 
-Firebase Hosting (Google Cloud)
+      Firebase Hosting (Google Cloud)
 
 ## 🛠️ Tech Stack
 
