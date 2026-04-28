@@ -36,8 +36,11 @@ GDACS Live Feed + NGO Handwritten Reports
 ↓
 
 Gemini AI Intelligence Engine
+
 ┌─────────────────────────────────────┐
-│ Predict │ Digitize │ Match+Rank     │
+
+|  Predict │ Digitize │ Match+Rank    │
+
 └─────────────────────────────────────┘
 
 ↓
