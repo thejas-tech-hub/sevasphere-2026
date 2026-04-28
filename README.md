@@ -49,8 +49,11 @@ Firebase Firestore (Real-time)
 ↓
 
 ┌─────────────────────────────────────┐
-│ NGO Dashboard │ Crisis Map          │
-│ + Predictions │ Volunteer DB        │
+│                                     |
+|   NGO Dashboard │ Crisis Map        │
+│                                     |
+|                                     |
+|   + Predictions │ Volunteer DB      │
 └─────────────────────────────────────┘
 
 ↓
